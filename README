@@ -1,0 +1,21 @@
+
+  ____      _ _       _  __        __                               
+ / ___|___ | | | __ _| |_\ \      / / __ __ _ _ __  _ __   ___ _ __ 
+| |   / _ \| | |/ _` | '_ \ \ /\ / / '__/ _` | '_ \| '_ \ / _ \ '__|
+| |__| (_) | | | (_| | |_) \ V  V /| | | (_| | |_) | |_) |  __/ |   
+ \____\___/|_|_|\__,_|_.__/ \_/\_/ |_|  \__,_| .__/| .__/ \___|_|   
+                                             |_|   |_|              
+
+This is a standalone version of the collabwrapper.  You can make
+collabwrapper.py importable by your activity, and then use a try/catch
+for the import, eg:
+
+    try:
+        from sugar3.presence.wrapper import CollabWrapper
+        from sugar3.presence.filetransfer import FT_STATE_COMPLETED
+    except ImportError:
+        from collabwrapper import CollabWrapper
+
+You can then use CollabWrapper and the filetransfer module normally.
+
+For documentation see: http://people.sugarlabs.org/sam/docs-collab-wrapper-try2/sugar3.presence.wrapper.html
