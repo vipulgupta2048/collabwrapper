@@ -52,20 +52,30 @@ class CollabTextEditor(Gtk.TextView):
 
     def __init__(self, activity, editor_id, collab):
         Gtk.TextView.__init__(self)
-        self._id = editor_id
-        self._callbacks_status = True
-        collab.connect('message', self.__message_cb)
-        collab.connect('buddy-joined', self.__buddy_joined_cb)
-        self._collab = collab
         self.set_editable(True)
         self.set_cursor_visible(True)
         self.set_wrap_mode(Gtk.WrapMode.WORD)
         self.textbuffer = self.get_buffer()
-        self.textbuffer.connect('insert-text', self.__text_buffer_inserted_cb)
-        self.textbuffer.connect('delete-range', self.__text_buffer_deleted_cb)
+        self._collaberizer = TextBufferCollaberizer(
+            self.textbuffer, editor_id, collab)
         self.textbuffer.set_text("")
         self.show()
+
+class TextBufferCollaberizer(object):
+
+    def __init__(self, textbuffer, editor_id, collab):
+        self._id = editor_id
+        self._buffer = textbuffer
+        self._callbacks_status = True
         self.has_initialized = False
+
+        self._collab = collab
+        self._collab.connect('message', self.__message_cb)
+        self._collab.connect('buddy-joined', self.__buddy_joined_cb)
+
+        self._buffer.connect('insert-text', self.__text_buffer_inserted_cb)
+        self._buffer.connect('delete-range', self.__text_buffer_deleted_cb)
+        self._buffer.set_text('')
 
     '''
     The message callback is called whenever another user edits
@@ -83,27 +93,27 @@ class CollabTextEditor(Gtk.TextView):
         if action == 'init_response' and self.has_initialized == False and message.get('res_id') == self._id:
             self.has_initialized = True
             self._callbacks_status = False
-            self.textbuffer.set_text(message.get('current_content'))
+            self._buffer.set_text(message.get('current_content'))
             self._callbacks_status = True
         if action == 'sync_editors' and message.get('res_id') == self._id:
             if self.has_initialized == False:
                 self.has_initialized = True
             self._callbacks_status = False
-            self.textbuffer.set_text(message.get('current_content'))
+            self._buffer.set_text(message.get('current_content'))
             self._callbacks_status = True
         if action == 'entry_inserted' and message.get('res_id') == self._id:
-            start_iter=self.textbuffer.get_iter_at_line_offset(message.get('start_iter_line'),
+            start_iter=self._buffer.get_iter_at_line_offset(message.get('start_iter_line'),
                     message.get('start_iter_offset'))
             self._callbacks_status = False
-            self.textbuffer.insert(start_iter, message.get('new_text'))
+            self._buffer.insert(start_iter, message.get('new_text'))
             self._callbacks_status = True
         if action == 'entry_deleted' and message.get('res_id') == self._id:
-            start_iter=self.textbuffer.get_iter_at_line_offset(message.get('start_iter_line'),
+            start_iter=self._buffer.get_iter_at_line_offset(message.get('start_iter_line'),
                     message.get('start_iter_offset'))
-            end_iter=self.textbuffer.get_iter_at_line_offset(message.get('end_iter_line'),
+            end_iter=self._buffer.get_iter_at_line_offset(message.get('end_iter_line'),
                     message.get('end_iter_offset'))
             self._callbacks_status = False
-            self.textbuffer.delete(start_iter, end_iter)
+            self._buffer.delete(start_iter, end_iter)
             self._callbacks_status = True
     
     '''
@@ -123,8 +133,8 @@ class CollabTextEditor(Gtk.TextView):
             self.has_initialized = True
         time.sleep(0.5)
         self._collab.post(dict(action='init_response', res_id=self._id, 
-            current_content=self.textbuffer.get_text(
-            self.textbuffer.get_start_iter(), self.textbuffer.get_end_iter(), True)))
+            current_content=self._buffer.get_text(
+            self._buffer.get_start_iter(), self._buffer.get_end_iter(), True)))
 
     '''
     This will send a message to all your buddies to set their editors to 
@@ -139,7 +149,7 @@ class CollabTextEditor(Gtk.TextView):
         if self.has_initialized == False:
             self.has_initialized = True
         self._callbacks_status = False
-        self.textbuffer.set_text(text)
+        self._buffer.set_text(text)
         self._callbacks_status = True
         self._collab.post(dict(action='sync_editors', res_id=self._id,
             current_content=text))
