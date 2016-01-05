@@ -71,11 +71,18 @@ class TextBufferCollaberizer(object):
 
         self._collab = collab
         self._collab.connect('message', self.__message_cb)
-        self._collab.connect('buddy-joined', self.__buddy_joined_cb)
+        self._collab.connect('joined', self.__joined_cb)
 
         self._buffer.connect('insert-text', self.__text_buffer_inserted_cb)
         self._buffer.connect('delete-range', self.__text_buffer_deleted_cb)
         self._buffer.set_text('')
+
+        if not self._collab.props.leader:
+            # We must be joining an activity and just made the buffer
+            self._collab.post(dict(
+                action='init_request',
+                res_id=self._id
+            ))
 
     '''
     The message callback is called whenever another user edits
@@ -90,24 +97,21 @@ class TextBufferCollaberizer(object):
 
     def __message_cb(self, collab, buddy, message):
         action = message.get('action')
-        if action == 'init_response' and self.has_initialized == False and message.get('res_id') == self._id:
+        if str(message.get('res_id')) != self._id:
+            return
+
+        if action == 'init_response' or action == 'sync_editors':
             self.has_initialized = True
             self._callbacks_status = False
             self._buffer.set_text(message.get('current_content'))
             self._callbacks_status = True
-        if action == 'sync_editors' and message.get('res_id') == self._id:
-            if self.has_initialized == False:
-                self.has_initialized = True
-            self._callbacks_status = False
-            self._buffer.set_text(message.get('current_content'))
-            self._callbacks_status = True
-        if action == 'entry_inserted' and message.get('res_id') == self._id:
+        if action == 'entry_inserted':
             start_iter=self._buffer.get_iter_at_line_offset(message.get('start_iter_line'),
                     message.get('start_iter_offset'))
             self._callbacks_status = False
             self._buffer.insert(start_iter, message.get('new_text'))
             self._callbacks_status = True
-        if action == 'entry_deleted' and message.get('res_id') == self._id:
+        if action == 'entry_deleted':
             start_iter=self._buffer.get_iter_at_line_offset(message.get('start_iter_line'),
                     message.get('start_iter_offset'))
             end_iter=self._buffer.get_iter_at_line_offset(message.get('end_iter_line'),
@@ -115,26 +119,24 @@ class TextBufferCollaberizer(object):
             self._callbacks_status = False
             self._buffer.delete(start_iter, end_iter)
             self._callbacks_status = True
+        if action == 'init_request':
+            text = self._buffer.get_text(
+                self._buffer.get_start_iter(),
+                self._buffer.get_end_iter(),
+                True)
+            self._collab.post(dict(
+                action='init_response',
+                res_id=self._id,
+                current_content=text
+            ))
     
-    '''
-    The buddy joined callback is called whenever another user joins
-    this activity. The leader then send them the contents of the text 
-    buffer so that their text buffer is an identical copy.
-     
-    Args:
-         buddy : another user who has joined the activity
-    '''
-         
-    def __buddy_joined_cb(self, sender, buddy):
-        logging.debug("Buddy joined")
-        if self._collab._leader == False:
+    def __joined_cb(self, sender):
+        if self._collab._leader:
             return
-        if self.has_initialized == False:
-            self.has_initialized = True
-        time.sleep(0.5)
-        self._collab.post(dict(action='init_response', res_id=self._id, 
-            current_content=self._buffer.get_text(
-            self._buffer.get_start_iter(), self._buffer.get_end_iter(), True)))
+        self._collab.post(dict(
+            action='init_request',
+            res_id=self._id
+        ))
 
     '''
     This will send a message to all your buddies to set their editors to 
