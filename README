@@ -13,10 +13,6 @@ How to use:
     git clone https://github.com/samdroid-apps/collabwrapper
     git add collabwrapper
 
-NOTE:  You will require https://github.com/sugarlabs/sugar-toolkit-gtk3/pull/298
-       patch applied to dist_xo or install (with osbuild) an activity with
-       submodules
-
 2. Import it
 
     from collabwrapper.collabwrapper import CollabWrapper
