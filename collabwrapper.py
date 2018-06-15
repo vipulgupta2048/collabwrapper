@@ -69,26 +69,18 @@ import json
 import socket
 from gettext import gettext as _
 
+import gi
+gi.require_version('TelepathyGLib', '0.12')
 from gi.repository import GObject
 from gi.repository import Gio
 from gi.repository import GLib
+from gi.repository import TelepathyGLib
 import dbus
 
-from telepathy.interfaces import \
-    CHANNEL_INTERFACE, \
-    CHANNEL_INTERFACE_GROUP, \
-    CHANNEL_TYPE_TEXT, \
-    CHANNEL_TYPE_FILE_TRANSFER, \
-    CONN_INTERFACE_ALIASING, \
-    CHANNEL, \
-    CLIENT
-from telepathy.constants import \
-    CHANNEL_GROUP_FLAG_CHANNEL_SPECIFIC_HANDLES, \
-    CONNECTION_HANDLE_TYPE_CONTACT, \
-    CHANNEL_TEXT_MESSAGE_TYPE_NORMAL, \
-    SOCKET_ADDRESS_TYPE_UNIX, \
-    SOCKET_ACCESS_CONTROL_LOCALHOST
-from telepathy.client import Connection, Channel
+from gi.repository.TelepathyGLib import\
+    SimpleClientFactory, \
+    Channel, \
+    ChannelTextMessageType
 
 from sugar3.presence import presenceservice
 from sugar3.activity.activity import SCOPE_PRIVATE
@@ -240,11 +232,11 @@ class CollabWrapper(GObject.GObject):
     def __new_channels_cb(self, channels):
         conn = self.shared_activity.telepathy_conn
         for path, props in channels:
-            if props[CHANNEL + '.Requested']:
+            if props[TelepathyGLib.IFACE_CHANNEL + '.Requested']:
                 continue  # This channel was requested by me
 
-            channel_type = props[CHANNEL + '.ChannelType']
-            if channel_type == CHANNEL_TYPE_FILE_TRANSFER:
+            channel_type = props[TelepathyGLib.IFACE_CHANNEL + '.ChannelType']
+            if channel_type == TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER:
                 self._handle_ft_channel(conn, path, props)
 
     def _handle_ft_channel(self, conn, path, props):
@@ -359,7 +351,7 @@ class CollabWrapper(GObject.GObject):
 
         Returns: str, telepathy client name
         '''
-        return CLIENT + '.' + self.activity.get_bundle_id()
+        return TelepathyGLib.IFACE_CLIENT + '.' + self.activity.get_bundle_id()
 
     @GObject.property
     def leader(self):
@@ -369,6 +361,7 @@ class CollabWrapper(GObject.GObject):
         ever be 1 leader for an activity.
         '''
         return self._leader
+
 
 FT_STATE_NONE = 0
 FT_STATE_PENDING = 1
@@ -424,16 +417,20 @@ class _BaseFileTransfer(GObject.GObject):
         should only be used by direct subclasses of the base file transfer.
         '''
         self.channel = channel
-        self.channel[CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
-            'FileTransferStateChanged', self.__state_changed_cb)
-        self.channel[CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
-            'TransferredBytesChanged', self.__transferred_bytes_changed_cb)
-        self.channel[CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
-            'InitialOffsetDefined', self.__initial_offset_defined_cb)
+        self.channel[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
+                'FileTransferStateChanged', self.__state_changed_cb)
+        self.channel[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
+                'TransferredBytesChanged', self.__transferred_bytes_changed_cb)
+        self.channel[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER].connect_to_signal(
+                'InitialOffsetDefined', self.__initial_offset_defined_cb)
 
         channel_properties = self.channel[dbus.PROPERTIES_IFACE]
 
-        props = channel_properties.GetAll(CHANNEL_TYPE_FILE_TRANSFER)
+        props = channel_properties.GetAll(
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER)
         self._state = props['State']
         self.filename = props['Filename']
         self.file_size = props['Size']
@@ -478,7 +475,7 @@ class _BaseFileTransfer(GObject.GObject):
 
         Spec:  http://telepathy.freedesktop.org/spec/Channel.html#Method:Close
         '''
-        self.channel[CHANNEL].Close()
+        self.channel[TelepathyGLib.IFACE_CHANNEL].Close()
 
 
 class IncomingFileTransfer(_BaseFileTransfer):
@@ -498,7 +495,7 @@ class IncomingFileTransfer(_BaseFileTransfer):
     def __init__(self, connection, object_path, props):
         _BaseFileTransfer.__init__(self)
 
-        channel = Channel(connection.bus_name, object_path)
+        channel = Channel.new(connection.bus_name, object_path)
         self.set_channel(channel)
 
         self.connect('notify::state', self.__notify_state_cb)
@@ -533,10 +530,11 @@ class IncomingFileTransfer(_BaseFileTransfer):
         self._accept()
 
     def _accept(self):
-        channel_ft = self.channel[CHANNEL_TYPE_FILE_TRANSFER]
+        channel_ft = self.channel[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER]
         self._socket_address = channel_ft.AcceptFile(
-            SOCKET_ADDRESS_TYPE_UNIX,
-            SOCKET_ACCESS_CONTROL_LOCALHOST,
+            TelepathyGLib.SocketAddressType.UNIX,
+            TelepathyGLib.SocketAccessControl.LOCALHOST,
             '',
             0,
             byte_arrays=True)
@@ -605,19 +603,30 @@ class _BaseOutgoingTransfer(_BaseFileTransfer):
 
     def _create_channel(self, file_size):
         object_path, properties_ = self._conn.CreateChannel(dbus.Dictionary({
-            CHANNEL + '.ChannelType': CHANNEL_TYPE_FILE_TRANSFER,
-            CHANNEL + '.TargetHandleType': CONNECTION_HANDLE_TYPE_CONTACT,
-            CHANNEL + '.TargetHandle': self.buddy.contact_handle,
-            CHANNEL_TYPE_FILE_TRANSFER + '.Filename': self._filename,
-            CHANNEL_TYPE_FILE_TRANSFER + '.Description': self._description,
-            CHANNEL_TYPE_FILE_TRANSFER + '.Size': file_size,
-            CHANNEL_TYPE_FILE_TRANSFER + '.ContentType': self._mime,
-            CHANNEL_TYPE_FILE_TRANSFER + '.InitialOffset': 0}, signature='sv'))
+            TelepathyGLib.IFACE_CHANNEL + '.ChannelType':
+                TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER,
+            TelepathyGLib.IFACE_CHANNEL + '.TargetHandleType':
+                TelepathyGLib.IFACE_CONNECTION_INTERFACE_CONTACTS,
+            TelepathyGLib.IFACE_CHANNEL + '.TargetHandle':
+                self.buddy.contact_handle,
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER +
+                '.Filename': self._filename,
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER +
+                '.Description': self._description,
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER +
+                '.Size': file_size,
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER +
+                '.ContentType': self._mime,
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER +
+                '.InitialOffset': 0}, signature='sv'))
         self.set_channel(Channel(self._conn.bus_name, object_path))
 
-        channel_file_transfer = self.channel[CHANNEL_TYPE_FILE_TRANSFER]
+        channel_file_transfer = self.channel[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_FILE_TRANSFER]
         self._socket_address = channel_file_transfer.ProvideFile(
-            SOCKET_ADDRESS_TYPE_UNIX, SOCKET_ACCESS_CONTROL_LOCALHOST, '',
+            TelepathyGLib.SocketAddressType.UNIX,
+            TelepathyGLib.SocketAccessControl.LOCALHOST,
+            '',
             byte_arrays=True)
 
     def _get_input_stream(self):
@@ -693,8 +702,9 @@ class _TextChannelWrapper(object):
         self._text_chan = text_chan
         self._conn = conn
         self._signal_matches = []
-        m = self._text_chan[CHANNEL_INTERFACE].connect_to_signal(
-            'Closed', self._closed_cb)
+        m = self._text_chan[
+            TelepathyGLib.IFACE_CHANNEL_INTERFACE].connect_to_signal(
+                'Closed', self._closed_cb)
         self._signal_matches.append(m)
 
     def post(self, msg):
@@ -707,14 +717,14 @@ class _TextChannelWrapper(object):
         _logger.debug('sending %s' % text)
 
         if self._text_chan is not None:
-            self._text_chan[CHANNEL_TYPE_TEXT].Send(
-                CHANNEL_TEXT_MESSAGE_TYPE_NORMAL, text)
+            self._text_chan[TelepathyGLib.IFACE_CHANNEL_TYPE_TEXT].Send(
+                ChannelTextMessageType.NORMAL, text)
 
     def close(self):
         '''Close the text channel.'''
         _logger.debug('Closing text channel')
         try:
-            self._text_chan[CHANNEL_INTERFACE].Close()
+            self._text_chan[TelepathyGLib.IFACE_CHANNEL_INTERFACE].Close()
         except Exception:
             _logger.debug('Channel disappeared!')
             self._closed_cb()
@@ -736,15 +746,16 @@ class _TextChannelWrapper(object):
         if self._text_chan is None:
             return
         self._activity_cb = callback
-        m = self._text_chan[CHANNEL_TYPE_TEXT].connect_to_signal(
-            'Received', self._received_cb)
+        m = self._text_chan[
+            TelepathyGLib.IFACE_CHANNEL_TYPE_TEXT].connect_to_signal(
+                'Received', self._received_cb)
         self._signal_matches.append(m)
 
     def handle_pending_messages(self):
         '''Get pending messages and show them as received.'''
         for identity, timestamp, sender, type_, flags, text in \
             self._text_chan[
-                CHANNEL_TYPE_TEXT].ListPendingMessages(False):
+                TelepathyGLib.IFACE_CHANNEL_TYPE_TEXT].ListPendingMessages(False):
             self._received_cb(identity, timestamp, sender, type_, flags, text)
 
     def _received_cb(self, identity, timestamp, sender, type_, flags, text):
@@ -762,11 +773,11 @@ class _TextChannelWrapper(object):
 
         if self._activity_cb:
             try:
-                self._text_chan[CHANNEL_INTERFACE_GROUP]
+                self._text_chan[TelepathyGLib.IFACE_CHANNEL_INTERFACE_GROUP]
             except Exception:
                 # One to one XMPP chat
                 nick = self._conn[
-                    CONN_INTERFACE_ALIASING].RequestAliases([sender])[0]
+                    TelepathyGLib.IFACE_CONNECTION_INTERFACE_ALIASING].RequestAliases([sender])[0]
                 buddy = {'nick': nick, 'color': '#000000,#808080'}
                 _logger.debug('exception: recieved from sender %r buddy %r' %
                               (sender, buddy))
@@ -778,7 +789,7 @@ class _TextChannelWrapper(object):
 
             self._activity_cb(buddy, msg)
             self._text_chan[
-                CHANNEL_TYPE_TEXT].AcknowledgePendingMessages([identity])
+                TelepathyGLib.IFACE_CHANNEL_TYPE_TEXT].AcknowledgePendingMessages([identity])
         else:
             _logger.debug('Throwing received message on the floor'
                           ' since there is no callback connected. See'
@@ -803,13 +814,13 @@ class _TextChannelWrapper(object):
 
         # Get the Telepathy Connection
         tp_name, tp_path = pservice.get_preferred_connection()
-        conn = Connection(tp_name, tp_path)
-        group = self._text_chan[CHANNEL_INTERFACE_GROUP]
+        conn = SimpleClientFactory.ensure_connection(tp_name, tp_path)
+        group = self._text_chan[TelepathyGLib.IFACE_CHANNEL_INTERFACE_GROUP]
         my_csh = group.GetSelfHandle()
         if my_csh == cs_handle:
             handle = conn.GetSelfHandle()
         elif (group.GetGroupFlags() &
-              CHANNEL_GROUP_FLAG_CHANNEL_SPECIFIC_HANDLES):
+              TelepathyGLib.ChannelGroupFlags.CHANNEL_SPECIFIC_HANDLES):
             handle = group.GetHandleOwners([cs_handle])[0]
         else:
             handle = cs_handle
