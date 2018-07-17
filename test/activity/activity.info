@@ -1,0 +1,9 @@
+[Activity]
+name = CollabWrapperTest
+activity_version = 1
+bundle_id = org.sugarlabs.CollabWrapperTest
+exec = sugar-activity activity.CollabWrapperTestActivity
+icon = activity-collabwrappertest
+license = GPLv2+
+repository = https://github.com/sugarlabs/collabwrapper
+summary = Test CollabWrapper
